@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Pozisyon Boyutu / Risk % Hesaplayıcı</title>
+  <meta name="description" content="Spot veya vadeli (kaldıraçlı) işlemler için pozisyon boyutu: bakiye, risk %, giriş/stop/TP, ücret ve kayma ile adet/miktar, marjin/maliyet, R:R ve breakeven hesaplar. CSV ve senaryolar içerir." />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root{--bg:#0f172a;--card:#0b1220;--accent:#06b6d4;--muted:#94a3b8;--glass:rgba(255,255,255,0.04)}
+    *{box-sizing:border-box;font-family:Inter,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    body{margin:0;background:linear-gradient(180deg,#071029 0%, #0b1220 100%);color:#e6eef8;min-height:100vh;padding:28px}
+    .container{max-width:1200px;margin:0 auto}
+    header{display:flex;gap:14px;align-items:center;margin-bottom:16px}
+    h1{font-size:22px;margin:0}
+    .grid{display:grid;grid-template-columns:420px 1fr;gap:18px}
+    .card{background:var(--card);border-radius:12px;padding:16px;box-shadow:0 6px 18px rgba(2,6,23,0.6)}
+    label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+    input[type=number],select{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:var(--glass);color:inherit}
+    .row{display:flex;gap:10px}
+    .row>div{flex:1}
+    button{background:var(--accent);border:none;color:#071029;padding:10px 12px;border-radius:10px;cursor:pointer;font-weight:700}
+    .muted{color:var(--muted);font-size:13px}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{padding:8px;border-bottom:1px solid rgba(255,255,255,0.06);font-size:13px}
+    th{color:var(--muted);text-align:left}
+    td{text-align:right}
+    td:first-child,th:first-child{text-align:left}
+    .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+    .kpi{background:rgba(255,255,255,0.03);padding:12px;border-radius:10px}
+    .kpi .label{font-size:12px;color:var(--muted)}
+    .kpi .value{font-size:18px;font-weight:800}
+    .tog{display:flex;gap:8px;align-items:center}
+    @media(max-width:1000px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="2" y="2" width="20" height="20" rx="6" fill="#0b1220" stroke="#06b6d4" stroke-width="1.2" />
+      <path d="M5 15c2-5 6-6 9-6s7 1 8 6" stroke="#06b6d4" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+    <div>
+      <h1>Pozisyon Boyutu / Risk % Hesaplayıcı</h1>
+      <div class="muted">Spot veya vadeli işlemler için: Bakiye, risk %, giriş/stop/TP, ücret & kayma (bps) ile miktar, marjin/maliyet, R:R ve breakeven.</div>
+    </div>
+  </header>
+
+  <div class="grid">
+    <!-- LEFT: INPUTS -->
+    <section class="card">
+      <h2 style="margin:0 0 8px 0">Girdi</h2>
+      <div class="row">
+        <div>
+          <label for="mode">Piyasa</label>
+          <select id="mode">
+            <option value="spot">Spot</option>
+            <option value="futures">Vadeli (Kaldıraçlı)</option>
+          </select>
+        </div>
+        <div>
+          <label for="side">Yön</label>
+          <select id="side">
+            <option value="long">Long</option>
+            <option value="short">Short</option>
+          </select>
+        </div>
+        <div>
+          <label for="currency">Para birimi</label>
+          <select id="currency">
+            <option value="USD">USD</option>
+            <option value="EUR">EUR</option>
+            <option value="TRY">TRY</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <div>
+          <label for="balance">Hesap bakiyesi</label>
+          <input id="balance" type="number" min="0" step="0.01" value="10000" />
+        </div>
+        <div>
+          <label for="riskPct">Risk % (işlem başına)</label>
+          <input id="riskPct" type="number" min="0" step="0.01" value="1" />
+        </div>
+        <div>
+          <label for="leverage">Kaldıraç (vadeli)</label>
+          <input id="leverage" type="number" min="1" step="1" value="10" />
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <div>
+          <label for="entry">Giriş fiyatı</label>
+          <input id="entry" type="number" min="0" step="0.0001" value="100" />
+        </div>
+        <div>
+          <label for="stop">Stop fiyatı</label>
+          <input id="stop" type="number" min="0" step="0.0001" value="95" />
+        </div>
+        <div>
+          <label for="tp">TP (opsiyonel)</label>
+          <input id="tp" type="number" min="0" step="0.0001" placeholder="ör. 112" />
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <div>
+          <label for="feeBps">Ücret (bps, tek yön)</label>
+          <input id="feeBps" type="number" min="0" step="0.01" value="5" />
+        </div>
+        <div>
+          <label for="slipBps">Kayma (bps, tek yön)</label>
+          <input id="slipBps" type="number" min="0" step="0.01" value="2" />
+        </div>
+        <div>
+          <label for="mult">Sözleşme çarpanı</label>
+          <input id="mult" type="number" min="0.0001" step="0.0001" value="1" />
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <div>
+          <label for="lotStep">Adet adımı</label>
+          <input id="lotStep" type="number" min="0" step="0.0001" value="0" />
+        </div>
+        <div>
+          <label for="minQty">Min. adet</label>
+          <input id="minQty" type="number" min="0" step="0.0001" value="0" />
+        </div>
+        <div class="tog" style="align-self:end">
+          <input id="feesInRisk" type="checkbox" checked>
+          <label for="feesInRisk" style="margin:0">Ücret/kaymayı riske dahil et</label>
+        </div>
+      </div>
+
+      <div style="margin-top:14px;display:flex;gap:8px;align-items:center">
+        <button id="run">Hesapla</button>
+        <button id="dlcsv" style="background:#0ea5a4">Senaryolar CSV</button>
+        <div style="flex:1;text-align:right" class="muted">Son hesaplama: <span id="lastRun">—</span></div>
+      </div>
+
+      <hr style="border:none;border-top:1px solid rgba(255,255,255,0.06);margin:14px 0" />
+      <div class="muted">*bps = 1/10000. Örn: 5 bps = %0,05. Ücret ve kayma her iki yönde de uygulanır (giriş + çıkış).</div>
+    </section>
+
+    <!-- RIGHT: OUTPUTS -->
+    <section class="card">
+      <div class="kpis">
+        <div class="kpi"><div class="label">Risk Tutarı</div><div id="k_riskAmt" class="value">—</div></div>
+        <div class="kpi"><div class="label">Adet / Miktar</div><div id="k_qty" class="value">—</div></div>
+        <div class="kpi"><div class="label">Maliyet / Marjin</div><div id="k_cost" class="value">—</div></div>
+      </div>
+      <div style="height:10px"></div>
+      <div class="kpis">
+        <div class="kpi"><div class="label">R:R</div><div id="k_rr" class="value">—</div></div>
+        <div class="kpi"><div class="label">Breakeven</div><div id="k_be" class="value">—</div></div>
+        <div class="kpi"><div class="label">TP Net Kar</div><div id="k_tpPnL" class="value">—</div></div>
+      </div>
+      <div style="height:12px"></div>
+      <canvas id="chart" height="280" aria-label="Risk yüzdesi senaryoları" role="img"></canvas>
+      <div id="scWrap" style="max-height:260px;overflow:auto;margin-top:10px"></div>
+    </section>
+  </div>
+
+  <div class="card" style="margin-top:18px">
+    <h3 style="margin-top:0">Formüller (özet)</h3>
+    <div class="muted">
+      <ul>
+        <li><b>Risk tutarı</b> = Bakiye × Risk %</li>
+        <li><b>Birim başı risk (long)</b> = (Giriş − Stop) + (Giriş + Stop) × f, burada <i>f</i> = (ücret+kayma) (tek yön) ve her iki yöne uygulanır.</li>
+        <li><b>Birim başı risk (short)</b> = (Stop − Giriş) + (Giriş + Stop) × f</li>
+        <li><b>Adet</b> = Risk tutarı / Birim başı risk (lot adımına göre yuvarlanır, min. adete uyum sağlanır)</li>
+        <li><b>Spot maliyet</b> = Adet × Giriş × Çarpan; <b>Vadeli marjin</b> = Notional / Kaldıraç</li>
+        <li><b>Breakeven (long)</b> = Giriş × (1+f)/(1−f); <b>(short)</b> = Giriş × (1−f)/(1+f)</li>
+        <li><b>R:R</b> ≈ (Net ödül / Net risk), TP verildiğinde hesaplanır</li>
+      </ul>
+    </div>
+    <div class="muted">Yatırım tavsiyesi değildir; eğitim amaçlıdır.</div>
+  </div>
+</div>
+
+<script>
+  // ---------- Utils ----------
+  const $ = id => document.getElementById(id);
+  const val = (id, d=0) => parseFloat($(id).value)||d;
+  const cur = () => $("currency").value;
+  const fmtC = n => !isFinite(n)?'—': n.toLocaleString('tr-TR',{style:'currency',currency:cur(),maximumFractionDigits:2});
+  const fmt = (n,dec=2) => !isFinite(n)?'—': Number(n).toLocaleString('tr-TR',{maximumFractionDigits:dec});
+
+  function roundLot(q, step, minQ){
+    let x = q;
+    if(step>0){ x = Math.floor(x/step)*step; }
+    if(minQ>0 && x<minQ){ x = 0; }
+    return x;
+  }
+
+  function breakeven(entry, f, side){
+    if(f>=1) return NaN; // güvenlik
+    if(side==='long') return entry*(1+f)/(1-f);
+    return entry*(1-f)/(1+f);
+  }
+
+  function compute(){
+    const mode = $("mode").value; // spot or futures
+    const side = $("side").value; // long or short
+    const balance = val("balance",0);
+    const riskPct = val("riskPct",0);
+    const entry = val("entry",0);
+    const stop = val("stop",0);
+    const tp = parseFloat($("tp").value);
+    const feeBps = val("feeBps",0);
+    const slipBps = val("slipBps",0);
+    const mult = Math.max(val("mult",1), 0.0000001);
+    const lev = Math.max(1, Math.floor(val("leverage",1)));
+    const lotStep = Math.max(0, val("lotStep",0));
+    const minQty = Math.max(0, val("minQty",0));
+    const feesInRisk = $("feesInRisk").checked;
+
+    const f = (feeBps+slipBps)/10000; // tek yön toplam, iki yöne uygulanır
+
+    // Risk per unit raw
+    let rawPerUnit = side==='long' ? (entry - stop) : (stop - entry);
+    if(rawPerUnit <= 0){
+      return { error: 'Stop fiyatı yönle tutarlı değil.' };
+    }
+    const costPerUnitAtStop = (entry + stop) * f; // giriş+çıkış maliyeti
+    const riskPerUnit = feesInRisk ? (rawPerUnit + costPerUnitAtStop) : rawPerUnit;
+
+    const riskAmt = balance * (riskPct/100);
+    let qty = riskPerUnit>0 ? (riskAmt / riskPerUnit) : 0;
+    qty = roundLot(qty, lotStep, minQty);
+
+    const notional = qty * entry * mult;
+
+    let costOrMargin;
+    if(mode==='spot') costOrMargin = notional; else costOrMargin = notional / lev;
+
+    const be = breakeven(entry, f, side);
+
+    // TP metrics
+    let rr='—', tpPnL='—';
+    if(isFinite(tp) && tp>0){
+      const rewardRaw = side==='long' ? (tp - entry) : (entry - tp);
+      const costAtTp = (entry + tp) * f; // giriş + çıkış
+      const netRewardPerUnit = rewardRaw - costAtTp;
+      const netRiskPerUnit = rawPerUnit + costPerUnitAtStop; // her zaman net risk üzerinden R:R verelim
+      if(netRewardPerUnit>0 && netRiskPerUnit>0){ rr = fmt(netRewardPerUnit/netRiskPerUnit, 2) + ' R'; }
+      const pnl = qty * ( (side==='long' ? (tp - entry) : (entry - tp)) - (entry + tp)*f );
+      tpPnL = fmtC(pnl);
+    }
+
+    // Worst-case PnL at stop (bilgi amaçlı, riskAmt ile kıyaslanır)
+    const stopPnL = qty * ( (side==='long' ? (stop - entry) : (entry - stop)) - (entry + stop)*f ); // negatif olmalı
+
+    return {
+      riskAmt, qty, costOrMargin, be, rr, tpPnL, stopPnL,
+      params:{mode,side,balance,riskPct,entry,stop,tp,f,lev,mult}
+    };
+  }
+
+  // ---------- UI Bindings ----------
+  const ctx = document.getElementById('chart').getContext('2d');
+  let chart = new Chart(ctx, {type:'bar',data:{labels:[],datasets:[{label:'Adet/Miktar',data:[],borderWidth:1}]}, options:{plugins:{legend:{display:false}}, scales:{y:{ticks:{color:'#e6eef8'}}}}});
+
+  function render(){
+    const res = compute();
+    if(res.error){ alert(res.error); return; }
+    $("k_riskAmt").textContent = fmtC(res.riskAmt);
+    $("k_qty").textContent = fmt(res.qty, 6);
+    $("k_cost").textContent = fmtC(res.costOrMargin);
+    $("k_be").textContent = isFinite(res.be)? fmt(res.be, 6) : '—';
+    $("k_rr").textContent = res.rr;
+    $("k_tpPnL").textContent = res.tpPnL;
+    $("lastRun").textContent = new Date().toLocaleString('tr-TR');
+
+    // Scenario grid for different risk %
+    const base = res.params;
+    const riskLevels = [0.25, 0.5, 1, 1.5, 2, 3];
+    const rows = [];
+    for(const r of riskLevels){
+      const riskAmt = base.balance * (r/100);
+      const rawPerUnit = base.side==='long' ? (base.entry - base.stop) : (base.stop - base.entry);
+      const costAtStop = (base.entry + base.stop)*base.f;
+      const perUnit = $("feesInRisk").checked ? (rawPerUnit + costAtStop) : rawPerUnit;
+      let qty = perUnit>0 ? (riskAmt / perUnit) : 0;
+      qty = roundLot(qty, Math.max(parseFloat($("lotStep").value)||0,0), Math.max(parseFloat($("minQty").value)||0,0));
+      const notional = qty * base.entry * base.mult;
+      const costOrMargin = base.mode==='spot' ? notional : notional / Math.max(base.lev,1);
+      const stopPnL = qty * ( (base.side==='long' ? (base.stop - base.entry) : (base.entry - base.stop)) - (base.entry + base.stop)*base.f );
+      rows.push({risk:r, qty, costOrMargin, stopPnL});
+    }
+
+    // chart
+    chart.data.labels = rows.map(x=>x.risk+'%');
+    chart.data.datasets[0].data = rows.map(x=>Number(x.qty.toFixed(6)));
+    chart.update();
+
+    // table
+    let html = '<table><thead><tr><th>Risk %</th><th>Adet</th><th>Maliyet/Marjin</th><th>Stop PnL</th></tr></thead><tbody>';
+    for(const x of rows){
+      html += `<tr><td>${x.risk}%</td><td style="text-align:right">${fmt(x.qty,6)}</td><td style="text-align:right">${fmtC(x.costOrMargin)}</td><td style="text-align:right">${fmtC(x.stopPnL)}</td></tr>`;
+    }
+    html += '</tbody></table>';
+    $("scWrap").innerHTML = html;
+
+    // CSV
+    window._PSC_CSV = ['risk_pct,qty,cost_or_margin,stop_pnl', ...rows.map(x=>[x.risk, x.qty.toFixed(8), x.costOrMargin.toFixed(2), x.stopPnL.toFixed(2)].join(','))].join('\n');
+  }
+
+  $("run").addEventListener('click', render);
+  $("dlcsv").addEventListener('click', ()=>{
+    if(!window._PSC_CSV){ alert('Önce Hesapla butonuna basın.'); return; }
+    const blob = new Blob([window._PSC_CSV],{type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'position_size_scenarios.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  });
+
+  // initial
+  render();
+</script>
+</body>
+</html>
